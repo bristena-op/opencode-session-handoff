@@ -142,7 +142,7 @@ When called, this tool:
 3. Creates a new session with that prompt
 4. Returns the new session ID
 
-Use this when the user says "handoff" to seamlessly continue work in a fresh context window.`,
+Use this when the user says "handoff" or "session handoff" to seamlessly continue work in a fresh context window.`,
     parameters: z.object({}),
     async execute(_args, ctx) {
       let todos: Array<{ content: string; status: string }> | undefined;
@@ -291,7 +291,7 @@ Use this when you're in a handoff session and need more details about what was d
 const HandoffPlugin: Plugin = async (ctx) => {
   return {
     tool: {
-      handoff: createHandoffTool({
+      session_handoff: createHandoffTool({
         directory: ctx.directory,
         client: ctx.client,
         serverUrl: ctx.serverUrl,
