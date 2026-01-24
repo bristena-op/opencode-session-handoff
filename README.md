@@ -2,6 +2,18 @@
 
 An OpenCode plugin for seamless session continuation when context windows fill up.
 
+## Installation
+
+Add to your `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "plugin": ["opencode-handoff"]
+}
+```
+
+Then restart OpenCode.
+
 ## What it does
 
 When your OpenCode session gets too long, use `session_handoff` to:
