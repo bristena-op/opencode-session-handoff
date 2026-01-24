@@ -1,8 +1,11 @@
 {
   "name": "opencode-handoff",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "dist/index.js",
   "type": "module",
+  "scripts": {
+    "build": "bun build index.ts --outdir dist --format esm"
+  },
   "dependencies": {
     "@opencode-ai/plugin": "1.1.12"
   }
