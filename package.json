@@ -1,0 +1,9 @@
+{
+  "name": "opencode-handoff",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "type": "module",
+  "dependencies": {
+    "@opencode-ai/plugin": "1.1.12"
+  }
+}
