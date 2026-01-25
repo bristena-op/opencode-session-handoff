@@ -173,7 +173,7 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
           if (sessionInfo?.data?.title) {
             previousTitle = sessionInfo.data.title;
           }
-        } catch (_error: unknown) {
+        } catch {
           /* Session info fetch failed - continue with defaults */
         }
 
@@ -197,7 +197,7 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
               agent = lastAssistant.mode;
             }
           }
-        } catch (_error: unknown) {
+        } catch {
           /* Messages fetch failed - continue without model config */
         }
 
@@ -209,7 +209,7 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
           if (todoResult.data && Array.isArray(todoResult.data)) {
             todos = todoResult.data as Array<{ content: string; status: string }>;
           }
-        } catch (_error: unknown) {
+        } catch {
           /* Todo fetch failed - continue without todos */
         }
       }
