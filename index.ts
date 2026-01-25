@@ -1,25 +1,47 @@
 import type { Plugin, ToolDefinition } from "@opencode-ai/plugin";
 import { z } from "zod";
 
-interface HandoffConfig {
-  auto_handoff_threshold?: number;
-  enabled?: boolean;
+interface Message {
+  role: string;
+  providerID?: string;
+  modelID?: string;
+  mode?: string;
+  parts?: Array<{ type: string; text?: string }>;
 }
 
-function loadConfig(directory: string): HandoffConfig {
-  try {
-    const fs = require("fs");
-    const path = require("path");
-    const configPath = path.join(directory, "handoff.json");
-    if (fs.existsSync(configPath)) {
-      return JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    }
-    const globalConfigPath = path.join(process.env.HOME || "", ".config/opencode/handoff.json");
-    if (fs.existsSync(globalConfigPath)) {
-      return JSON.parse(fs.readFileSync(globalConfigPath, "utf-8"));
-    }
-  } catch {}
-  return { auto_handoff_threshold: 80, enabled: true };
+interface PluginClient {
+  session: {
+    get: (params: { path: { id: string }; query: { directory: string } }) => Promise<{
+      data?: { title?: string };
+    }>;
+    messages: (params: { path: { id: string }; query: { directory: string } }) => Promise<{
+      data?: Message[];
+    }>;
+    todo: (params: { path: { id: string }; query: { directory: string } }) => Promise<{
+      data?: Array<{ content: string; status: string }>;
+    }>;
+    create: (params: { query: { directory: string }; body: { title: string } }) => Promise<{
+      data?: { id?: string };
+    }>;
+    promptAsync: (params: {
+      path: { id: string };
+      query: { directory: string };
+      body: {
+        model?: { providerID: string; modelID: string };
+        agent?: string;
+        parts: Array<{ type: string; text: string }>;
+      };
+    }) => Promise<void>;
+  };
+  tui: {
+    openSessions: (params: { query: { directory: string } }) => Promise<void>;
+  };
+}
+
+interface PluginContext {
+  directory: string;
+  client: PluginClient;
+  serverUrl: URL;
 }
 
 function buildHandoffPrompt(args: {
@@ -125,11 +147,7 @@ function buildHandoffPrompt(args: {
   return lines.join("\n");
 }
 
-function createHandoffTool(pluginCtx: {
-  directory: string;
-  client: any;
-  serverUrl: URL;
-}): ToolDefinition {
+function createHandoffTool(pluginCtx: PluginContext): ToolDefinition {
   return {
     description: `Generate a minimal continuation prompt and start a new session with it.
 
@@ -156,7 +174,9 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
           if (sessionInfo?.data?.title) {
             previousTitle = sessionInfo.data.title;
           }
-        } catch {}
+        } catch (_error: unknown) {
+          /* Session info fetch failed - continue with defaults */
+        }
 
         try {
           const messagesResult = await pluginCtx.client.session.messages({
@@ -165,22 +185,22 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
           });
           if (messagesResult?.data && Array.isArray(messagesResult.data)) {
             const assistantMessages = messagesResult.data.filter(
-              (m: any) => m.role === "assistant",
+              (m: Message) => m.role === "assistant",
             );
             const lastAssistant = assistantMessages[assistantMessages.length - 1];
-            if (lastAssistant) {
-              if (lastAssistant.providerID && lastAssistant.modelID) {
-                modelConfig = {
-                  providerID: lastAssistant.providerID,
-                  modelID: lastAssistant.modelID,
-                };
-              }
-              if (lastAssistant.mode) {
-                agent = lastAssistant.mode;
-              }
+            if (lastAssistant?.providerID && lastAssistant?.modelID) {
+              modelConfig = {
+                providerID: lastAssistant.providerID,
+                modelID: lastAssistant.modelID,
+              };
+            }
+            if (lastAssistant?.mode) {
+              agent = lastAssistant.mode;
             }
           }
-        } catch {}
+        } catch (_error: unknown) {
+          /* Messages fetch failed - continue without model config */
+        }
 
         try {
           const todoResult = await pluginCtx.client.session.todo({
@@ -188,12 +208,11 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
             query: { directory: pluginCtx.directory },
           });
           if (todoResult.data && Array.isArray(todoResult.data)) {
-            todos = todoResult.data as Array<{
-              content: string;
-              status: string;
-            }>;
+            todos = todoResult.data;
           }
-        } catch {}
+        } catch (_error: unknown) {
+          /* Todo fetch failed - continue without todos */
+        }
       }
 
       const handoffPrompt = buildHandoffPrompt({
@@ -240,7 +259,10 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
   };
 }
 
-function createReadSessionTool(pluginCtx: { directory: string; client: any }): ToolDefinition {
+function createReadSessionTool(pluginCtx: {
+  directory: string;
+  client: PluginClient;
+}): ToolDefinition {
   return {
     description: `Read messages from a previous session to get additional context.
 
@@ -262,12 +284,12 @@ Use this when you're in a handoff session and need more details about what was d
         }
 
         const messages = messagesResult.data.slice(-20);
-        const formatted = messages.map((msg: any) => {
+        const formatted = messages.map((msg: Message) => {
           const role = msg.role || "unknown";
           const content =
             msg.parts
-              ?.filter((p: any) => p.type === "text")
-              .map((p: any) => p.text)
+              ?.filter((p) => p.type === "text")
+              .map((p) => p.text || "")
               .join("\n") || "[no text content]";
           return `[${role}]: ${content.slice(0, 2000)}${content.length > 2000 ? "..." : ""}`;
         });
@@ -286,12 +308,12 @@ const HandoffPlugin: Plugin = async (ctx) => {
     tool: {
       session_handoff: createHandoffTool({
         directory: ctx.directory,
-        client: ctx.client,
+        client: ctx.client as PluginClient,
         serverUrl: ctx.serverUrl,
       }),
       read_session: createReadSessionTool({
         directory: ctx.directory,
-        client: ctx.client,
+        client: ctx.client as PluginClient,
       }),
     },
   };
@@ -299,5 +321,4 @@ const HandoffPlugin: Plugin = async (ctx) => {
 
 export default HandoffPlugin;
 
-// Export for testing
 export { buildHandoffPrompt };
