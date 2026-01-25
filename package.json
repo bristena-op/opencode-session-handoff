@@ -1,5 +1,5 @@
 {
-  "name": "@bristena-op/opencode-handoff",
+  "name": "@bristena-op/opencode-session-handoff",
   "version": "1.0.2",
   "description": "OpenCode plugin for seamless session continuation when context windows fill up",
   "main": "dist/index.mjs",
