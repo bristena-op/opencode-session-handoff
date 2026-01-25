@@ -75,6 +75,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 5. Sends the prompt via `session.promptAsync`
 6. Opens session picker via `tui.openSessions`
 
+## vs the Built-in Handoff
+
+|              | Built-in                    | This plugin      |
+| ------------ | --------------------------- | ---------------- |
+| Output       | `.opencode-handoff.md` file | New live session |
+| Continuation | Manual copy/paste           | Automatic        |
+| Agent/Model  | Lost                        | Preserved        |
+| Todos        | Not included                | Transferred      |
+
 ## Note
 
 This plugin uses `session_handoff` (not `handoff`) to avoid collision with OpenCode's built-in handoff behavior.
