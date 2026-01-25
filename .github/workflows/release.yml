@@ -28,6 +28,11 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Update package version from tag
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          npm version $VERSION --no-git-tag-version --allow-same-version
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"

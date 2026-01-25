@@ -1,6 +1,6 @@
 {
   "name": "opencode-session-handoff",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "OpenCode plugin for seamless session continuation when context windows fill up",
   "main": "dist/index.mjs",
   "module": "dist/index.mjs",
