@@ -14,10 +14,7 @@ function loadConfig(directory: string): HandoffConfig {
     if (fs.existsSync(configPath)) {
       return JSON.parse(fs.readFileSync(configPath, "utf-8"));
     }
-    const globalConfigPath = path.join(
-      process.env.HOME || "",
-      ".config/opencode/handoff.json",
-    );
+    const globalConfigPath = path.join(process.env.HOME || "", ".config/opencode/handoff.json");
     if (fs.existsSync(globalConfigPath)) {
       return JSON.parse(fs.readFileSync(globalConfigPath, "utf-8"));
     }
@@ -170,8 +167,7 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
             const assistantMessages = messagesResult.data.filter(
               (m: any) => m.role === "assistant",
             );
-            const lastAssistant =
-              assistantMessages[assistantMessages.length - 1];
+            const lastAssistant = assistantMessages[assistantMessages.length - 1];
             if (lastAssistant) {
               if (lastAssistant.providerID && lastAssistant.modelID) {
                 modelConfig = {
@@ -244,10 +240,7 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
   };
 }
 
-function createReadSessionTool(pluginCtx: {
-  directory: string;
-  client: any;
-}): ToolDefinition {
+function createReadSessionTool(pluginCtx: { directory: string; client: any }): ToolDefinition {
   return {
     description: `Read messages from a previous session to get additional context.
 
@@ -305,3 +298,6 @@ const HandoffPlugin: Plugin = async (ctx) => {
 };
 
 export default HandoffPlugin;
+
+// Export for testing
+export { buildHandoffPrompt };

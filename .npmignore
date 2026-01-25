@@ -1,0 +1,27 @@
+# Source files
+index.ts
+*.test.ts
+
+# Config files
+tsconfig.json
+tsdown.config.ts
+vitest.config.ts
+biome.json
+oxlint.json
+
+# Dev tooling
+.husky/
+node_modules/
+bun.lock
+bun.lockb
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+coverage/
