@@ -1,6 +1,7 @@
 import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import type { Message, Part } from "@opencode-ai/sdk";
 import { buildHandoffPrompt } from "./prompt.ts";
+import { createAutoUpdateHook } from "./auto-update.ts";
 
 type PluginClient = PluginInput["client"];
 
@@ -266,7 +267,13 @@ This tool fetches the last 20 messages which uses significant tokens. The handof
 }
 
 const HandoffPlugin: Plugin = async (ctx) => {
+  const autoUpdateHook = createAutoUpdateHook({
+    directory: ctx.directory,
+    client: ctx.client,
+  });
+
   return {
+    event: autoUpdateHook.event,
     tool: {
       session_handoff: createHandoffTool({
         directory: ctx.directory,
