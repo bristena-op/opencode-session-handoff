@@ -1,2 +1,15 @@
+# Dependencies
 node_modules/
+
+# Build output
+dist/
+
+# OS
+.DS_Store
+
+# Test artifacts
+coverage/
+
+# Misc
 *.log
+*.tgz

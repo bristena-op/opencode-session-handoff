@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "rules": {
+    "max-lines": ["warn", { "max": 500, "skipBlankLines": true, "skipComments": true }],
+    "max-lines-per-function": [
+      "warn",
+      { "max": 100, "skipBlankLines": true, "skipComments": true }
+    ],
+    "complexity": ["warn", { "max": 10 }],
+    "max-depth": ["warn", { "max": 4 }],
+    "max-nested-callbacks": ["warn", { "max": 2 }],
+    "max-params": ["warn", { "max": 4 }],
+    "no-explicit-any": "error",
+    "no-empty": "error",
+    "no-unused-vars": "warn",
+    "eqeqeq": "error"
+  },
+  "ignorePatterns": ["dist/**", "node_modules/**"]
+}
