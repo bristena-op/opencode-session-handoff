@@ -12,13 +12,13 @@ bun install
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `bun run build` | Build the plugin |
-| `bun run test` | Run tests |
-| `bun run check` | Run all checks (format, lint, typecheck, test) |
-| `bun run format` | Format code with oxfmt |
-| `bun run lint` | Lint with oxlint |
+| Command          | Description                                    |
+| ---------------- | ---------------------------------------------- |
+| `bun run build`  | Build the plugin                               |
+| `bun run test`   | Run tests                                      |
+| `bun run check`  | Run all checks (format, lint, typecheck, test) |
+| `bun run format` | Format code with oxfmt                         |
+| `bun run lint`   | Lint with oxlint                               |
 
 ## Local Development
 
@@ -26,9 +26,7 @@ To test your changes locally, add the plugin path to your `~/.config/opencode/op
 
 ```json
 {
-  "plugin": [
-    "./plugins/opencode-handoff"
-  ]
+  "plugin": ["./plugins/opencode-handoff"]
 }
 ```
 

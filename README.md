@@ -32,6 +32,7 @@ Creates a new session with continuation context.
 **Usage:** Say "handoff" or "session handoff"
 
 **Arguments (provided by the assistant):**
+
 - `summary` (required): 1-3 sentence summary of current state
 - `next_steps` (optional): Remaining tasks
 - `blocked` (optional): Current blocker
@@ -39,6 +40,7 @@ Creates a new session with continuation context.
 - `files_modified` (optional): Key files changed
 
 **Auto-fetched:**
+
 - Todo list status (completed/in-progress/pending)
 - Agent mode (e.g., Sisyphus, build, plan)
 - Model configuration (provider + model ID)
