@@ -1,19 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { buildHandoffPrompt } from "./index";
+import { buildHandoffPrompt, type HandoffArgs } from "./prompt.ts";
 
-const baseArgs = {
+const baseArgs: HandoffArgs = {
   previousSessionId: "ses_123",
   task: "Test task",
   blocked: "",
-  modified_files: [] as string[],
-  reference_files: [] as string[],
-  decisions: [] as Array<{ decision: string; reason: string }>,
-  tried_failed: [] as Array<{ approach: string; why_failed: string }>,
-  next_steps: [] as string[],
-  user_prefs: [] as string[],
+  modified_files: [],
+  reference_files: [],
+  decisions: [],
+  tried_failed: [],
+  next_steps: [],
+  user_prefs: [],
 };
 
-function build(overrides: Partial<typeof baseArgs> = {}) {
+function build(overrides: Partial<HandoffArgs> = {}) {
   return buildHandoffPrompt({ ...baseArgs, ...overrides });
 }
 

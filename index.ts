@@ -1,41 +1,8 @@
-import type { Plugin, ToolDefinition } from "@opencode-ai/plugin";
+import type { Plugin, PluginInput } from "@opencode-ai/plugin";
+import type { Message, Part } from "@opencode-ai/sdk";
+import { buildHandoffPrompt } from "./prompt.ts";
 
-interface Message {
-  role: string;
-  providerID?: string;
-  modelID?: string;
-  mode?: string;
-  parts?: Array<{ type: string; text?: string }>;
-}
-
-interface PluginClient {
-  session: {
-    get: (params: { path: { id: string }; query: { directory: string } }) => Promise<{
-      data?: { title?: string };
-    }>;
-    messages: (params: { path: { id: string }; query: { directory: string } }) => Promise<{
-      data?: Message[];
-    }>;
-    todo: (params: { path: { id: string }; query: { directory: string } }) => Promise<{
-      data?: Array<{ content: string; status: string }>;
-    }>;
-    create: (params: { query: { directory: string }; body: { title: string } }) => Promise<{
-      data?: { id?: string };
-    }>;
-    promptAsync: (params: {
-      path: { id: string };
-      query: { directory: string };
-      body: {
-        model?: { providerID: string; modelID: string };
-        agent?: string;
-        parts: Array<{ type: string; text: string }>;
-      };
-    }) => Promise<void>;
-  };
-  tui: {
-    openSessions: (params: { query: { directory: string } }) => Promise<void>;
-  };
-}
+type PluginClient = PluginInput["client"];
 
 interface PluginContext {
   directory: string;
@@ -48,97 +15,6 @@ interface Todo {
   status: string;
 }
 
-interface Decision {
-  decision: string;
-  reason: string;
-}
-
-interface TriedFailed {
-  approach: string;
-  why_failed: string;
-}
-
-interface HandoffArgs {
-  previousSessionId: string;
-  task: string;
-  blocked: string;
-  modified_files: string[];
-  reference_files: string[];
-  decisions: Decision[];
-  tried_failed: TriedFailed[];
-  next_steps: string[];
-  user_prefs: string[];
-  todos?: Todo[];
-}
-
-function buildBlockedSection(blocked: string): string[] {
-  if (!blocked || blocked === "none") return [];
-  return ["", "### Blocked", blocked];
-}
-
-function buildTodosSection(todos: Todo[] | undefined): string[] {
-  if (!todos || todos.length === 0) return [];
-  const completed = todos.filter((t) => t.status === "completed").length;
-  const inProgress = todos.filter((t) => t.status === "in_progress");
-  const pending = todos.filter((t) => t.status === "pending");
-  const lines = ["", "### Todos", `${completed}/${todos.length} complete`];
-  if (inProgress.length > 0) {
-    lines.push(`In progress: ${inProgress.map((t) => t.content).join(", ")}`);
-  }
-  if (pending.length > 0) {
-    lines.push(`Pending: ${pending.map((t) => t.content).join(", ")}`);
-  }
-  return lines;
-}
-
-function buildFilesSection(modified: string[], reference: string[]): string[] {
-  if (modified.length === 0 && reference.length === 0) return [];
-  const lines = ["", "### Files"];
-  if (modified.length > 0) lines.push(`Modified: ${modified.join(", ")}`);
-  if (reference.length > 0) lines.push(`Reference: ${reference.join(", ")}`);
-  return lines;
-}
-
-function buildDecisionsSection(decisions: Decision[]): string[] {
-  if (decisions.length === 0) return [];
-  return ["", "### Decisions Made", ...decisions.map((d) => `- ${d.decision}: ${d.reason}`)];
-}
-
-function buildTriedFailedSection(tried: TriedFailed[]): string[] {
-  if (tried.length === 0) return [];
-  return ["", "### Tried & Failed", ...tried.map((t) => `- ${t.approach}: ${t.why_failed}`)];
-}
-
-function buildNextStepsSection(steps: string[]): string[] {
-  if (steps.length === 0) return [];
-  return ["", "### Next Steps", ...steps.map((step, i) => `${i + 1}. ${step}`)];
-}
-
-function buildUserPrefsSection(prefs: string[]): string[] {
-  if (prefs.length === 0) return [];
-  return ["", "### User Preferences", ...prefs.map((p) => `- ${p}`)];
-}
-
-function buildHandoffPrompt(args: HandoffArgs): string {
-  const lines = [
-    "## Handoff Continuation Prompt",
-    "",
-    "### Task",
-    args.task || "Continue previous work",
-    ...buildBlockedSection(args.blocked),
-    ...buildTodosSection(args.todos),
-    ...buildFilesSection(args.modified_files, args.reference_files),
-    ...buildDecisionsSection(args.decisions),
-    ...buildTriedFailedSection(args.tried_failed),
-    ...buildNextStepsSection(args.next_steps),
-    ...buildUserPrefsSection(args.user_prefs),
-    "",
-    "---",
-    `Continuing from session \`${args.previousSessionId}\`. Use \`read_session\` tool if you need additional context.`,
-  ];
-  return lines.join("\n");
-}
-
 interface ModelConfig {
   providerID: string;
   modelID: string;
@@ -149,6 +25,11 @@ interface SessionContext {
   todos: Todo[];
   modelConfig?: ModelConfig;
   agent?: string;
+}
+
+interface MessageWithParts {
+  info: Message;
+  parts: Part[];
 }
 
 async function fetchSessionTitle(
@@ -169,6 +50,7 @@ function extractModelFromMessage(msg: Message | undefined): {
   agent?: string;
 } {
   if (!msg) return {};
+  if (msg.role !== "assistant") return {};
   const out: { modelConfig?: ModelConfig; agent?: string } = {};
   if (msg.providerID && msg.modelID) {
     out.modelConfig = { providerID: msg.providerID, modelID: msg.modelID };
@@ -185,8 +67,10 @@ async function fetchModelConfig(
   try {
     const result = await client.session.messages({ path: { id: sessionId }, query: { directory } });
     if (!result?.data || !Array.isArray(result.data)) return {};
-    const assistantMessages = result.data.filter((m: Message) => m.role === "assistant");
-    return extractModelFromMessage(assistantMessages[assistantMessages.length - 1]);
+    const messages = result.data as MessageWithParts[];
+    const assistantMessages = messages.filter((m) => m.info.role === "assistant");
+    const lastAssistant = assistantMessages[assistantMessages.length - 1];
+    return extractModelFromMessage(lastAssistant?.info);
   } catch {
     return {};
   }
@@ -220,7 +104,7 @@ async function gatherSessionContext(
   return ctx;
 }
 
-function createHandoffTool(pluginCtx: PluginContext): ToolDefinition {
+function createHandoffTool(pluginCtx: PluginContext) {
   return {
     description: `Generate a minimal continuation prompt and start a new session with it.
 
@@ -232,7 +116,7 @@ When called, this tool:
 
 Use this when the user says "handoff" or "session handoff" to seamlessly continue work in a fresh context window.`,
     args: {},
-    async execute(_args, ctx) {
+    async execute(_args: Record<string, never>, ctx: { sessionID: string }) {
       const context = ctx.sessionID
         ? await gatherSessionContext(pluginCtx, ctx.sessionID)
         : { title: "Unknown", todos: [] };
@@ -279,16 +163,13 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
   };
 }
 
-function createReadSessionTool(pluginCtx: {
-  directory: string;
-  client: PluginClient;
-}): ToolDefinition {
+function createReadSessionTool(pluginCtx: { directory: string; client: PluginClient }) {
   return {
     description: `Read messages from a previous session to get additional context.
 
 Use this when you're in a handoff session and need more details about what was discussed or decided in the previous session.`,
     args: {},
-    async execute(_args, ctx) {
+    async execute(_args: Record<string, never>, ctx: { sessionID: string }) {
       if (!ctx.sessionID) {
         return "No session ID available";
       }
@@ -303,14 +184,13 @@ Use this when you're in a handoff session and need more details about what was d
           return `No messages found`;
         }
 
-        const messages = messagesResult.data.slice(-20);
-        const formatted = messages.map((msg: Message) => {
-          const role = msg.role || "unknown";
-          const content =
-            msg.parts
-              ?.filter((p) => p.type === "text")
-              .map((p) => p.text || "")
-              .join("\n") || "[no text content]";
+        const messages = (messagesResult.data as MessageWithParts[]).slice(-20);
+        const formatted = messages.map((msg) => {
+          const role = msg.info.role || "unknown";
+          const textParts = msg.parts.filter(
+            (p): p is Part & { type: "text"; text: string } => p.type === "text",
+          );
+          const content = textParts.map((p) => p.text || "").join("\n") || "[no text content]";
           return `[${role}]: ${content.slice(0, 2000)}${content.length > 2000 ? "..." : ""}`;
         });
 
@@ -324,24 +204,19 @@ Use this when you're in a handoff session and need more details about what was d
 }
 
 const HandoffPlugin: Plugin = async (ctx) => {
-  // Cast client to our simplified interface - the actual SDK types are complex
-  // and we only use a subset of the API
-  const client = ctx.client as unknown as PluginClient;
   return {
     tool: {
       session_handoff: createHandoffTool({
         directory: ctx.directory,
-        client,
+        client: ctx.client,
         serverUrl: ctx.serverUrl,
       }),
       read_session: createReadSessionTool({
         directory: ctx.directory,
-        client,
+        client: ctx.client,
       }),
     },
   };
 };
 
 export default HandoffPlugin;
-
-export { buildHandoffPrompt };
