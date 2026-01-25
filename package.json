@@ -14,12 +14,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bristena-op/opencode-handoff.git"
+    "url": "https://github.com/bristena-op/opencode-session-handoff.git"
   },
   "bugs": {
-    "url": "https://github.com/bristena-op/opencode-handoff/issues"
+    "url": "https://github.com/bristena-op/opencode-session-handoff/issues"
   },
-  "homepage": "https://github.com/bristena-op/opencode-handoff#readme",
+  "homepage": "https://github.com/bristena-op/opencode-session-handoff#readme",
   "keywords": [
     "opencode",
     "opencode-plugin",
