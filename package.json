@@ -2,44 +2,41 @@
   "name": "opencode-session-handoff",
   "version": "1.0.3",
   "description": "OpenCode plugin for seamless session continuation when context windows fill up",
-  "main": "dist/index.mjs",
-  "module": "dist/index.mjs",
-  "types": "dist/index.d.mts",
-  "type": "module",
-  "exports": {
-    ".": {
-      "import": "./dist/index.mjs",
-      "types": "./dist/index.d.mts"
-    }
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/bristena-op/opencode-session-handoff.git"
-  },
+  "keywords": [
+    "context-window",
+    "continuation",
+    "handoff",
+    "opencode",
+    "opencode-plugin",
+    "session"
+  ],
+  "homepage": "https://github.com/bristena-op/opencode-session-handoff#readme",
   "bugs": {
     "url": "https://github.com/bristena-op/opencode-session-handoff/issues"
   },
-  "homepage": "https://github.com/bristena-op/opencode-session-handoff#readme",
-  "keywords": [
-    "opencode",
-    "opencode-plugin",
-    "handoff",
-    "session",
-    "context-window",
-    "continuation"
-  ],
-  "author": "bristena-op",
   "license": "MIT",
-  "engines": {
-    "node": ">=18.0.0"
+  "author": "bristena-op",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bristena-op/opencode-session-handoff.git"
   },
   "files": [
     "dist",
     "README.md"
   ],
+  "type": "module",
+  "main": "dist/index.mjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
   "scripts": {
-    "format": "biome format --write .",
-    "format:check": "biome format .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "lint": "oxlint -c oxlint.json .",
     "lint:fix": "oxlint -c oxlint.json --fix .",
     "typecheck": "tsc --noEmit",
@@ -51,26 +48,28 @@
     "prepublishOnly": "bun run check && bun run build",
     "prepare": "husky"
   },
-  "lint-staged": {
-    "*.{ts,js}": [
-      "biome format --write"
-    ],
-    "*.json": [
-      "biome format --write"
-    ]
-  },
   "dependencies": {
-    "@opencode-ai/plugin": "1.1.12",
-    "zod": "^3.24.0"
+    "@opencode-ai/plugin": "1.1.12"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.3.12",
     "@types/node": "^25.0.10",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
+    "oxfmt": "^0.26.0",
     "oxlint": "^1.41.0",
     "tsdown": "^0.20.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
+  },
+  "lint-staged": {
+    "*.{ts,js}": [
+      "oxfmt"
+    ],
+    "*.json": [
+      "oxfmt"
+    ]
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

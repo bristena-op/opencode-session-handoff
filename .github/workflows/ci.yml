@@ -25,11 +25,9 @@ jobs:
 
       - name: Lint
         run: bun run lint
-        continue-on-error: true
 
       - name: Type check
         run: bun run typecheck
-        continue-on-error: true
 
       - name: Test
         run: bun run test

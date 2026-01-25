@@ -43,107 +43,181 @@ interface PluginContext {
   serverUrl: URL;
 }
 
-function buildHandoffPrompt(args: {
+interface Todo {
+  content: string;
+  status: string;
+}
+
+interface Decision {
+  decision: string;
+  reason: string;
+}
+
+interface TriedFailed {
+  approach: string;
+  why_failed: string;
+}
+
+interface HandoffArgs {
   previousSessionId: string;
   task: string;
   blocked: string;
   modified_files: string[];
   reference_files: string[];
-  decisions: Array<{ decision: string; reason: string }>;
-  tried_failed: Array<{ approach: string; why_failed: string }>;
+  decisions: Decision[];
+  tried_failed: TriedFailed[];
   next_steps: string[];
   user_prefs: string[];
-  todos?: Array<{ content: string; status: string }>;
-}): string {
-  const {
-    previousSessionId,
-    task,
-    blocked,
-    modified_files,
-    reference_files,
-    decisions,
-    tried_failed,
-    next_steps,
-    user_prefs,
-    todos,
-  } = args;
+  todos?: Todo[];
+}
 
-  const lines: string[] = ["## Handoff Continuation Prompt"];
-  lines.push("");
-  lines.push("### Task");
-  lines.push(task || "Continue previous work");
+function buildBlockedSection(blocked: string): string[] {
+  if (!blocked || blocked === "none") return [];
+  return ["", "### Blocked", blocked];
+}
 
-  if (blocked && blocked !== "none") {
-    lines.push("");
-    lines.push("### Blocked");
-    lines.push(blocked);
+function buildTodosSection(todos: Todo[] | undefined): string[] {
+  if (!todos || todos.length === 0) return [];
+  const completed = todos.filter((t) => t.status === "completed").length;
+  const inProgress = todos.filter((t) => t.status === "in_progress");
+  const pending = todos.filter((t) => t.status === "pending");
+  const lines = ["", "### Todos", `${completed}/${todos.length} complete`];
+  if (inProgress.length > 0) {
+    lines.push(`In progress: ${inProgress.map((t) => t.content).join(", ")}`);
   }
-
-  if (todos && todos.length > 0) {
-    const completed = todos.filter((t) => t.status === "completed").length;
-    const inProgress = todos.filter((t) => t.status === "in_progress");
-    const pending = todos.filter((t) => t.status === "pending");
-    lines.push("");
-    lines.push("### Todos");
-    lines.push(`${completed}/${todos.length} complete`);
-    if (inProgress.length > 0) {
-      lines.push(`In progress: ${inProgress.map((t) => t.content).join(", ")}`);
-    }
-    if (pending.length > 0) {
-      lines.push(`Pending: ${pending.map((t) => t.content).join(", ")}`);
-    }
+  if (pending.length > 0) {
+    lines.push(`Pending: ${pending.map((t) => t.content).join(", ")}`);
   }
+  return lines;
+}
 
-  if (modified_files.length > 0 || reference_files.length > 0) {
-    lines.push("");
-    lines.push("### Files");
-    if (modified_files.length > 0) {
-      lines.push(`Modified: ${modified_files.join(", ")}`);
-    }
-    if (reference_files.length > 0) {
-      lines.push(`Reference: ${reference_files.join(", ")}`);
-    }
-  }
+function buildFilesSection(modified: string[], reference: string[]): string[] {
+  if (modified.length === 0 && reference.length === 0) return [];
+  const lines = ["", "### Files"];
+  if (modified.length > 0) lines.push(`Modified: ${modified.join(", ")}`);
+  if (reference.length > 0) lines.push(`Reference: ${reference.join(", ")}`);
+  return lines;
+}
 
-  if (decisions.length > 0) {
-    lines.push("");
-    lines.push("### Decisions Made");
-    for (const d of decisions) {
-      lines.push(`- ${d.decision}: ${d.reason}`);
-    }
-  }
+function buildDecisionsSection(decisions: Decision[]): string[] {
+  if (decisions.length === 0) return [];
+  return ["", "### Decisions Made", ...decisions.map((d) => `- ${d.decision}: ${d.reason}`)];
+}
 
-  if (tried_failed.length > 0) {
-    lines.push("");
-    lines.push("### Tried & Failed");
-    for (const t of tried_failed) {
-      lines.push(`- ${t.approach}: ${t.why_failed}`);
-    }
-  }
+function buildTriedFailedSection(tried: TriedFailed[]): string[] {
+  if (tried.length === 0) return [];
+  return ["", "### Tried & Failed", ...tried.map((t) => `- ${t.approach}: ${t.why_failed}`)];
+}
 
-  if (next_steps.length > 0) {
-    lines.push("");
-    lines.push("### Next Steps");
-    next_steps.forEach((step, i) => {
-      lines.push(`${i + 1}. ${step}`);
-    });
-  }
+function buildNextStepsSection(steps: string[]): string[] {
+  if (steps.length === 0) return [];
+  return ["", "### Next Steps", ...steps.map((step, i) => `${i + 1}. ${step}`)];
+}
 
-  if (user_prefs.length > 0) {
-    lines.push("");
-    lines.push("### User Preferences");
-    for (const pref of user_prefs) {
-      lines.push(`- ${pref}`);
-    }
-  }
+function buildUserPrefsSection(prefs: string[]): string[] {
+  if (prefs.length === 0) return [];
+  return ["", "### User Preferences", ...prefs.map((p) => `- ${p}`)];
+}
 
-  lines.push("");
-  lines.push("---");
-  lines.push(
-    `Continuing from session \`${previousSessionId}\`. Use \`read_session\` tool if you need additional context.`,
-  );
-
+function buildHandoffPrompt(args: HandoffArgs): string {
+  const lines = [
+    "## Handoff Continuation Prompt",
+    "",
+    "### Task",
+    args.task || "Continue previous work",
+    ...buildBlockedSection(args.blocked),
+    ...buildTodosSection(args.todos),
+    ...buildFilesSection(args.modified_files, args.reference_files),
+    ...buildDecisionsSection(args.decisions),
+    ...buildTriedFailedSection(args.tried_failed),
+    ...buildNextStepsSection(args.next_steps),
+    ...buildUserPrefsSection(args.user_prefs),
+    "",
+    "---",
+    `Continuing from session \`${args.previousSessionId}\`. Use \`read_session\` tool if you need additional context.`,
+  ];
   return lines.join("\n");
+}
+
+interface ModelConfig {
+  providerID: string;
+  modelID: string;
+}
+
+interface SessionContext {
+  title: string;
+  todos: Todo[];
+  modelConfig?: ModelConfig;
+  agent?: string;
+}
+
+async function fetchSessionTitle(
+  client: PluginClient,
+  sessionId: string,
+  directory: string,
+): Promise<string> {
+  try {
+    const result = await client.session.get({ path: { id: sessionId }, query: { directory } });
+    return result?.data?.title || "Unknown";
+  } catch {
+    return "Unknown";
+  }
+}
+
+function extractModelFromMessage(msg: Message | undefined): {
+  modelConfig?: ModelConfig;
+  agent?: string;
+} {
+  if (!msg) return {};
+  const out: { modelConfig?: ModelConfig; agent?: string } = {};
+  if (msg.providerID && msg.modelID) {
+    out.modelConfig = { providerID: msg.providerID, modelID: msg.modelID };
+  }
+  if (msg.mode) out.agent = msg.mode;
+  return out;
+}
+
+async function fetchModelConfig(
+  client: PluginClient,
+  sessionId: string,
+  directory: string,
+): Promise<{ modelConfig?: ModelConfig; agent?: string }> {
+  try {
+    const result = await client.session.messages({ path: { id: sessionId }, query: { directory } });
+    if (!result?.data || !Array.isArray(result.data)) return {};
+    const assistantMessages = result.data.filter((m: Message) => m.role === "assistant");
+    return extractModelFromMessage(assistantMessages[assistantMessages.length - 1]);
+  } catch {
+    return {};
+  }
+}
+
+async function fetchTodos(
+  client: PluginClient,
+  sessionId: string,
+  directory: string,
+): Promise<Todo[]> {
+  try {
+    const result = await client.session.todo({ path: { id: sessionId }, query: { directory } });
+    return Array.isArray(result?.data) ? (result.data as Todo[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function gatherSessionContext(
+  pluginCtx: PluginContext,
+  sessionId: string,
+): Promise<SessionContext> {
+  const [title, modelResult, todos] = await Promise.all([
+    fetchSessionTitle(pluginCtx.client, sessionId, pluginCtx.directory),
+    fetchModelConfig(pluginCtx.client, sessionId, pluginCtx.directory),
+    fetchTodos(pluginCtx.client, sessionId, pluginCtx.directory),
+  ]);
+  const ctx: SessionContext = { title, todos };
+  if (modelResult.modelConfig) ctx.modelConfig = modelResult.modelConfig;
+  if (modelResult.agent) ctx.agent = modelResult.agent;
+  return ctx;
 }
 
 function createHandoffTool(pluginCtx: PluginContext): ToolDefinition {
@@ -159,64 +233,13 @@ When called, this tool:
 Use this when the user says "handoff" or "session handoff" to seamlessly continue work in a fresh context window.`,
     args: {},
     async execute(_args, ctx) {
-      let todos: Array<{ content: string; status: string }> = [];
-      let previousTitle = "Unknown";
-      let modelConfig: { providerID: string; modelID: string } | undefined;
-      let agent: string | undefined;
-
-      if (ctx.sessionID) {
-        try {
-          const sessionInfo = await pluginCtx.client.session.get({
-            path: { id: ctx.sessionID },
-            query: { directory: pluginCtx.directory },
-          });
-          if (sessionInfo?.data?.title) {
-            previousTitle = sessionInfo.data.title;
-          }
-        } catch {
-          /* Session info fetch failed - continue with defaults */
-        }
-
-        try {
-          const messagesResult = await pluginCtx.client.session.messages({
-            path: { id: ctx.sessionID },
-            query: { directory: pluginCtx.directory },
-          });
-          if (messagesResult?.data && Array.isArray(messagesResult.data)) {
-            const assistantMessages = messagesResult.data.filter(
-              (m: Message) => m.role === "assistant",
-            );
-            const lastAssistant = assistantMessages[assistantMessages.length - 1];
-            if (lastAssistant?.providerID && lastAssistant?.modelID) {
-              modelConfig = {
-                providerID: lastAssistant.providerID,
-                modelID: lastAssistant.modelID,
-              };
-            }
-            if (lastAssistant?.mode) {
-              agent = lastAssistant.mode;
-            }
-          }
-        } catch {
-          /* Messages fetch failed - continue without model config */
-        }
-
-        try {
-          const todoResult = await pluginCtx.client.session.todo({
-            path: { id: ctx.sessionID },
-            query: { directory: pluginCtx.directory },
-          });
-          if (todoResult.data && Array.isArray(todoResult.data)) {
-            todos = todoResult.data as Array<{ content: string; status: string }>;
-          }
-        } catch {
-          /* Todo fetch failed - continue without todos */
-        }
-      }
+      const context = ctx.sessionID
+        ? await gatherSessionContext(pluginCtx, ctx.sessionID)
+        : { title: "Unknown", todos: [] };
 
       const handoffPrompt = buildHandoffPrompt({
         previousSessionId: ctx.sessionID,
-        task: previousTitle,
+        task: context.title,
         blocked: "",
         modified_files: [],
         reference_files: [],
@@ -224,36 +247,34 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
         tried_failed: [],
         next_steps: [],
         user_prefs: [],
-        ...(todos.length > 0 && { todos }),
+        ...(context.todos.length > 0 && { todos: context.todos }),
       });
 
-      const newTitle = `Handoff: ${previousTitle}`;
-
+      const newTitle = `Handoff: ${context.title}`;
       const newSession = await pluginCtx.client.session.create({
         query: { directory: pluginCtx.directory },
         body: { title: newTitle },
       });
 
       const sessionId = newSession?.data?.id;
-      if (!sessionId) {
-        return `Failed to create session`;
-      }
+      if (!sessionId) return "Failed to create session";
 
       await pluginCtx.client.session.promptAsync({
         path: { id: sessionId },
         query: { directory: pluginCtx.directory },
         body: {
-          ...(modelConfig && { model: modelConfig }),
-          ...(agent && { agent }),
+          ...(context.modelConfig && { model: context.modelConfig }),
+          ...(context.agent && { agent: context.agent }),
           parts: [{ type: "text", text: handoffPrompt }],
         },
       });
 
-      await pluginCtx.client.tui.openSessions({
-        query: { directory: pluginCtx.directory },
-      });
+      await pluginCtx.client.tui.openSessions({ query: { directory: pluginCtx.directory } });
 
-      return `✓ Session "${newTitle}" created (${agent || "default"} · ${modelConfig ? `${modelConfig.providerID}/${modelConfig.modelID}` : "default model"}). Select it from the picker.`;
+      const modelDisplay = context.modelConfig
+        ? `${context.modelConfig.providerID}/${context.modelConfig.modelID}`
+        : "default model";
+      return `✓ Session "${newTitle}" created (${context.agent || "default"} · ${modelDisplay}). Select it from the picker.`;
     },
   };
 }
