@@ -1,5 +1,4 @@
 import type { Plugin, ToolDefinition } from "@opencode-ai/plugin";
-import { z } from "zod";
 
 interface Message {
   role: string;
@@ -158,9 +157,9 @@ When called, this tool:
 4. Returns the new session ID
 
 Use this when the user says "handoff" or "session handoff" to seamlessly continue work in a fresh context window.`,
-    parameters: z.object({}),
+    args: {},
     async execute(_args, ctx) {
-      let todos: Array<{ content: string; status: string }> | undefined;
+      let todos: Array<{ content: string; status: string }> = [];
       let previousTitle = "Unknown";
       let modelConfig: { providerID: string; modelID: string } | undefined;
       let agent: string | undefined;
@@ -208,7 +207,7 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
             query: { directory: pluginCtx.directory },
           });
           if (todoResult.data && Array.isArray(todoResult.data)) {
-            todos = todoResult.data;
+            todos = todoResult.data as Array<{ content: string; status: string }>;
           }
         } catch (_error: unknown) {
           /* Todo fetch failed - continue without todos */
@@ -225,7 +224,7 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
         tried_failed: [],
         next_steps: [],
         user_prefs: [],
-        todos,
+        ...(todos.length > 0 && { todos }),
       });
 
       const newTitle = `Handoff: ${previousTitle}`;
@@ -244,8 +243,8 @@ Use this when the user says "handoff" or "session handoff" to seamlessly continu
         path: { id: sessionId },
         query: { directory: pluginCtx.directory },
         body: {
-          model: modelConfig,
-          agent: agent,
+          ...(modelConfig && { model: modelConfig }),
+          ...(agent && { agent }),
           parts: [{ type: "text", text: handoffPrompt }],
         },
       });
@@ -267,7 +266,7 @@ function createReadSessionTool(pluginCtx: {
     description: `Read messages from a previous session to get additional context.
 
 Use this when you're in a handoff session and need more details about what was discussed or decided in the previous session.`,
-    parameters: z.object({}),
+    args: {},
     async execute(_args, ctx) {
       if (!ctx.sessionID) {
         return "No session ID available";
@@ -304,16 +303,19 @@ Use this when you're in a handoff session and need more details about what was d
 }
 
 const HandoffPlugin: Plugin = async (ctx) => {
+  // Cast client to our simplified interface - the actual SDK types are complex
+  // and we only use a subset of the API
+  const client = ctx.client as unknown as PluginClient;
   return {
     tool: {
       session_handoff: createHandoffTool({
         directory: ctx.directory,
-        client: ctx.client as PluginClient,
+        client,
         serverUrl: ctx.serverUrl,
       }),
       read_session: createReadSessionTool({
         directory: ctx.directory,
-        client: ctx.client as PluginClient,
+        client,
       }),
     },
   };
