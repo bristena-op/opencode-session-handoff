@@ -43,10 +43,10 @@ Then restart OpenCode to load the plugin from your local directory.
 
 ## Pull Requests
 
-1. Fork the repo and create your branch from `main`
+1. Create a branch from `main`
 2. Make your changes
 3. Run `bun run check` to ensure all checks pass
-4. Open a PR with a clear description of the changes
+4. Open a PR with a clear description
 
 ## Project Structure
 
