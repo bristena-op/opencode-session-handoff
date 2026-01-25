@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
     "lib": ["ES2022"],
     "strict": true,
     "noEmit": true,
@@ -18,6 +19,6 @@
     "exactOptionalPropertyTypes": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["index.ts"],
+  "include": ["index.ts", "prompt.ts", "index.test.ts"],
   "exclude": ["node_modules", "dist"]
 }
