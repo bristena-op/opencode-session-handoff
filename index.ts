@@ -104,101 +104,163 @@ async function gatherSessionContext(
   return ctx;
 }
 
+interface HandoffToolArgs {
+  summary: string;
+  next_steps?: string[];
+  blocked?: string;
+  key_decisions?: string[];
+  files_modified?: string[];
+}
+
+interface CreateSessionParams {
+  client: PluginClient;
+  directory: string;
+  title: string;
+  context: SessionContext;
+  handoffPrompt: string;
+}
+
+async function createAndPromptSession(params: CreateSessionParams): Promise<string | null> {
+  const { client, directory, title, context, handoffPrompt } = params;
+  const newSession = await client.session.create({ query: { directory }, body: { title } });
+  const sessionId = newSession?.data?.id;
+  if (!sessionId) return null;
+
+  const body: {
+    model?: ModelConfig;
+    agent?: string;
+    parts: Array<{ type: "text"; text: string }>;
+  } = { parts: [{ type: "text" as const, text: handoffPrompt }] };
+  if (context.modelConfig) body.model = context.modelConfig;
+  if (context.agent) body.agent = context.agent;
+
+  await client.session.promptAsync({ path: { id: sessionId }, query: { directory }, body });
+  return sessionId;
+}
+
+function buildHandoffArgs(args: HandoffToolArgs, sessionID: string, todos: Todo[]) {
+  return {
+    previousSessionId: sessionID,
+    summary: args.summary,
+    blocked: args.blocked || "",
+    modified_files: args.files_modified || [],
+    reference_files: [] as string[],
+    decisions: (args.key_decisions || []).map((d) => ({ decision: d, reason: "" })),
+    tried_failed: [] as Array<{ approach: string; why_failed: string }>,
+    next_steps: args.next_steps || [],
+    user_prefs: [] as string[],
+    ...(todos.length > 0 && { todos }),
+  };
+}
+
+async function executeHandoff(
+  pluginCtx: PluginContext,
+  args: HandoffToolArgs,
+  sessionID: string,
+): Promise<string> {
+  if (!args.summary?.trim()) {
+    return "Error: summary is required. Provide a 1-3 sentence summary of the current state.";
+  }
+
+  const context = sessionID
+    ? await gatherSessionContext(pluginCtx, sessionID)
+    : { title: "Unknown", todos: [] };
+
+  const handoffPrompt = buildHandoffPrompt(buildHandoffArgs(args, sessionID, context.todos));
+  const newTitle = `Handoff: ${context.title}`;
+
+  const sessionId = await createAndPromptSession({
+    client: pluginCtx.client,
+    directory: pluginCtx.directory,
+    title: newTitle,
+    context,
+    handoffPrompt,
+  });
+
+  if (!sessionId) return "Failed to create session";
+
+  await pluginCtx.client.tui.openSessions({ query: { directory: pluginCtx.directory } });
+
+  const model = context.modelConfig;
+  const modelDisplay = model ? `${model.providerID}/${model.modelID}` : "default model";
+  return `✓ Session "${newTitle}" created (${context.agent || "default"} · ${modelDisplay}). Select it from the picker.`;
+}
+
 function createHandoffTool(pluginCtx: PluginContext) {
   return {
-    description: `Generate a minimal continuation prompt and start a new session with it.
+    description: `Generate a compact continuation prompt and start a new session with it.
 
 When called, this tool:
-1. Reads current todo state
-2. Generates a compact handoff prompt (~200-400 tokens)
-3. Creates a new session with that prompt
+1. Uses YOUR summary of what was accomplished (required)
+2. Auto-fetches todo state from current session
+3. Creates a new session with a minimal handoff prompt (~100-200 tokens)
 4. Returns the new session ID
 
-Use this when the user says "handoff" or "session handoff" to seamlessly continue work in a fresh context window.`,
+IMPORTANT: You MUST provide a concise summary. Do not dump the entire conversation - distill it to essential context only.
+
+Arguments (pass as JSON object):
+- summary (required): 1-3 sentence summary of current state
+- next_steps (optional): Array of remaining tasks
+- blocked (optional): Current blocker if any
+- key_decisions (optional): Array of important decisions made
+- files_modified (optional): Array of key files changed
+
+The new session will have access to \`read_session\` tool if more context is needed later.`,
     args: {},
-    async execute(_args: Record<string, never>, ctx: { sessionID: string }) {
-      const context = ctx.sessionID
-        ? await gatherSessionContext(pluginCtx, ctx.sessionID)
-        : { title: "Unknown", todos: [] };
-
-      const handoffPrompt = buildHandoffPrompt({
-        previousSessionId: ctx.sessionID,
-        task: context.title,
-        blocked: "",
-        modified_files: [],
-        reference_files: [],
-        decisions: [],
-        tried_failed: [],
-        next_steps: [],
-        user_prefs: [],
-        ...(context.todos.length > 0 && { todos: context.todos }),
-      });
-
-      const newTitle = `Handoff: ${context.title}`;
-      const newSession = await pluginCtx.client.session.create({
-        query: { directory: pluginCtx.directory },
-        body: { title: newTitle },
-      });
-
-      const sessionId = newSession?.data?.id;
-      if (!sessionId) return "Failed to create session";
-
-      await pluginCtx.client.session.promptAsync({
-        path: { id: sessionId },
-        query: { directory: pluginCtx.directory },
-        body: {
-          ...(context.modelConfig && { model: context.modelConfig }),
-          ...(context.agent && { agent: context.agent }),
-          parts: [{ type: "text", text: handoffPrompt }],
-        },
-      });
-
-      await pluginCtx.client.tui.openSessions({ query: { directory: pluginCtx.directory } });
-
-      const modelDisplay = context.modelConfig
-        ? `${context.modelConfig.providerID}/${context.modelConfig.modelID}`
-        : "default model";
-      return `✓ Session "${newTitle}" created (${context.agent || "default"} · ${modelDisplay}). Select it from the picker.`;
+    async execute(args: Record<string, unknown>, ctx: { sessionID: string }) {
+      return executeHandoff(pluginCtx, args as unknown as HandoffToolArgs, ctx.sessionID);
     },
   };
 }
 
+async function executeReadSession(
+  pluginCtx: { directory: string; client: PluginClient },
+  sessionID: string,
+): Promise<string> {
+  if (!sessionID) {
+    return "No session ID available";
+  }
+
+  try {
+    const messagesResult = await pluginCtx.client.session.messages({
+      path: { id: sessionID },
+      query: { directory: pluginCtx.directory },
+    });
+
+    if (!messagesResult?.data || !Array.isArray(messagesResult.data)) {
+      return "No messages found";
+    }
+
+    const messages = (messagesResult.data as MessageWithParts[]).slice(-20);
+    const formatted = messages.map((msg) => {
+      const role = msg.info.role || "unknown";
+      const textParts = msg.parts.filter(
+        (p): p is Part & { type: "text"; text: string } => p.type === "text",
+      );
+      const content = textParts.map((p) => p.text || "").join("\n") || "[no text content]";
+      return `[${role}]: ${content.slice(0, 2000)}${content.length > 2000 ? "..." : ""}`;
+    });
+
+    return `Messages (last ${messages.length}):\n\n${formatted.join("\n\n---\n\n")}`;
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    return `Failed to read session: ${errorMsg}`;
+  }
+}
+
 function createReadSessionTool(pluginCtx: { directory: string; client: PluginClient }) {
   return {
-    description: `Read messages from a previous session to get additional context.
+    description: `Read messages from the previous session to get additional context.
 
-Use this when you're in a handoff session and need more details about what was discussed or decided in the previous session.`,
+USE SPARINGLY - only when:
+- User explicitly asks to "load more context" or "read previous session"
+- You encounter something from the handoff that needs clarification
+- You need specific details not captured in the handoff summary
+
+This tool fetches the last 20 messages which uses significant tokens. The handoff summary should be sufficient for most continuations.`,
     args: {},
-    async execute(_args: Record<string, never>, ctx: { sessionID: string }) {
-      if (!ctx.sessionID) {
-        return "No session ID available";
-      }
-
-      try {
-        const messagesResult = await pluginCtx.client.session.messages({
-          path: { id: ctx.sessionID },
-          query: { directory: pluginCtx.directory },
-        });
-
-        if (!messagesResult?.data || !Array.isArray(messagesResult.data)) {
-          return `No messages found`;
-        }
-
-        const messages = (messagesResult.data as MessageWithParts[]).slice(-20);
-        const formatted = messages.map((msg) => {
-          const role = msg.info.role || "unknown";
-          const textParts = msg.parts.filter(
-            (p): p is Part & { type: "text"; text: string } => p.type === "text",
-          );
-          const content = textParts.map((p) => p.text || "").join("\n") || "[no text content]";
-          return `[${role}]: ${content.slice(0, 2000)}${content.length > 2000 ? "..." : ""}`;
-        });
-
-        return `Messages (last ${messages.length}):\n\n${formatted.join("\n\n---\n\n")}`;
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        return `Failed to read session: ${errorMsg}`;
-      }
+    async execute(_args: Record<string, unknown>, ctx: { sessionID: string }) {
+      return executeReadSession(pluginCtx, ctx.sessionID);
     },
   };
 }
