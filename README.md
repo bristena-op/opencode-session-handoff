@@ -1,14 +1,18 @@
-# opencode-handoff
+# opencode-session-handoff
 
 An OpenCode plugin for seamless session continuation when context windows fill up.
 
 ## Installation
 
+```bash
+npm install opencode-session-handoff
+```
+
 Add to your `~/.config/opencode/opencode.json`:
 
 ```json
 {
-  "plugin": ["opencode-handoff"]
+  "plugins": ["opencode-session-handoff"]
 }
 ```
 
@@ -24,18 +28,6 @@ When your OpenCode session gets too long, use `session_handoff` to:
 4. Open the session picker so you can switch to it
 
 The new session starts with full context of what you were working on, preserving your agent (Sisyphus/build/plan) and model settings.
-
-## Installation
-
-The plugin is installed at `~/.config/opencode/plugins/opencode-handoff/`.
-
-Add it to your `opencode.json`:
-
-```json
-{
-  "plugins": ["./plugins/opencode-handoff"]
-}
-```
 
 ## Tools
 
@@ -73,9 +65,11 @@ Optional config file at `~/.config/opencode/handoff.json`:
 ## Development
 
 ```bash
-cd ~/.config/opencode/plugins/opencode-handoff
+git clone https://github.com/bristena-op/opencode-session-handoff.git
+cd opencode-session-handoff
 bun install
-bun build index.ts --outdir dist --format esm
+bun run build
+bun run test
 ```
 
 ## How it works
