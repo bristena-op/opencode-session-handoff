@@ -24,6 +24,7 @@ export interface HandoffArgs {
   next_steps: string[];
   user_prefs: string[];
   todos?: Todo[];
+  goal?: string;
 }
 
 function buildBlockedSection(blocked: string): string[] {
@@ -62,11 +63,17 @@ function buildNextStepsSection(steps: string[]): string[] {
   return ["", "**Next:** " + steps.map((s, i) => `${i + 1}. ${s}`).join(" ")];
 }
 
+function buildGoalSection(goal: string | undefined): string[] {
+  if (!goal) return [];
+  return ["", `**Goal:** ${goal}`];
+}
+
 export function buildHandoffPrompt(args: HandoffArgs): string {
   return [
     "## Session Handoff",
     "",
     args.summary,
+    ...buildGoalSection(args.goal),
     ...buildBlockedSection(args.blocked),
     ...buildTodosSection(args.todos),
     ...buildFilesSection(args.modified_files),
