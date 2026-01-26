@@ -29,11 +29,18 @@ When your OpenCode session gets too long, use `session_handoff` to:
 
 Creates a new session with continuation context.
 
-**Usage:** Say "handoff" or "session handoff"
+**Usage:** Say "handoff" or "handoff <goal>"
+
+**Examples:**
+
+- `handoff` - Creates a handoff with summary of current work
+- `handoff implement the login feature` - Creates a handoff with goal "implement the login feature"
+- `handoff fix the failing tests` - Creates a handoff with goal "fix the failing tests"
 
 **Arguments (provided by the assistant):**
 
 - `summary` (required): 1-3 sentence summary of current state
+- `goal` (optional): What the user wants to accomplish in the next session (extracted from "handoff <goal>")
 - `next_steps` (optional): Remaining tasks
 - `blocked` (optional): Current blocker
 - `key_decisions` (optional): Important decisions made

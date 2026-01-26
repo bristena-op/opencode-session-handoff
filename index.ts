@@ -39,7 +39,10 @@ async function fetchSessionTitle(
   directory: string,
 ): Promise<string> {
   try {
-    const result = await client.session.get({ path: { id: sessionId }, query: { directory } });
+    const result = await client.session.get({
+      path: { id: sessionId },
+      query: { directory },
+    });
     return result?.data?.title || "Unknown";
   } catch {
     return "Unknown";
@@ -66,7 +69,10 @@ async function fetchModelConfig(
   directory: string,
 ): Promise<{ modelConfig?: ModelConfig; agent?: string }> {
   try {
-    const result = await client.session.messages({ path: { id: sessionId }, query: { directory } });
+    const result = await client.session.messages({
+      path: { id: sessionId },
+      query: { directory },
+    });
     if (!result?.data || !Array.isArray(result.data)) return {};
     const messages = result.data as MessageWithParts[];
     const assistantMessages = messages.filter((m) => m.info.role === "assistant");
@@ -83,7 +89,10 @@ async function fetchTodos(
   directory: string,
 ): Promise<Todo[]> {
   try {
-    const result = await client.session.todo({ path: { id: sessionId }, query: { directory } });
+    const result = await client.session.todo({
+      path: { id: sessionId },
+      query: { directory },
+    });
     return Array.isArray(result?.data) ? (result.data as Todo[]) : [];
   } catch {
     return [];
@@ -111,6 +120,7 @@ interface HandoffToolArgs {
   blocked?: string;
   key_decisions?: string[];
   files_modified?: string[];
+  goal?: string;
 }
 
 interface CreateSessionParams {
@@ -123,7 +133,10 @@ interface CreateSessionParams {
 
 async function createAndPromptSession(params: CreateSessionParams): Promise<string | null> {
   const { client, directory, title, context, handoffPrompt } = params;
-  const newSession = await client.session.create({ query: { directory }, body: { title } });
+  const newSession = await client.session.create({
+    query: { directory },
+    body: { title },
+  });
   const sessionId = newSession?.data?.id;
   if (!sessionId) return null;
 
@@ -135,7 +148,11 @@ async function createAndPromptSession(params: CreateSessionParams): Promise<stri
   if (context.modelConfig) body.model = context.modelConfig;
   if (context.agent) body.agent = context.agent;
 
-  await client.session.promptAsync({ path: { id: sessionId }, query: { directory }, body });
+  await client.session.promptAsync({
+    path: { id: sessionId },
+    query: { directory },
+    body,
+  });
   return sessionId;
 }
 
@@ -146,11 +163,15 @@ function buildHandoffArgs(args: HandoffToolArgs, sessionID: string, todos: Todo[
     blocked: args.blocked || "",
     modified_files: args.files_modified || [],
     reference_files: [] as string[],
-    decisions: (args.key_decisions || []).map((d) => ({ decision: d, reason: "" })),
+    decisions: (args.key_decisions || []).map((d) => ({
+      decision: d,
+      reason: "",
+    })),
     tried_failed: [] as Array<{ approach: string; why_failed: string }>,
     next_steps: args.next_steps || [],
     user_prefs: [] as string[],
     ...(todos.length > 0 && { todos }),
+    ...(args.goal && { goal: args.goal }),
   };
 }
 
@@ -180,7 +201,9 @@ async function executeHandoff(
 
   if (!sessionId) return "Failed to create session";
 
-  await pluginCtx.client.tui.openSessions({ query: { directory: pluginCtx.directory } });
+  await pluginCtx.client.tui.openSessions({
+    query: { directory: pluginCtx.directory },
+  });
 
   const model = context.modelConfig;
   const modelDisplay = model ? `${model.providerID}/${model.modelID}` : "default model";
@@ -201,6 +224,7 @@ IMPORTANT: You MUST provide a concise summary. Do not dump the entire conversati
 
 Arguments (pass as JSON object):
 - summary (required): 1-3 sentence summary of current state
+- goal (optional): If the user said "handoff <something>" or "session_handoff <something>", extract what comes after as the goal for the next session
 - next_steps (optional): Array of remaining tasks
 - blocked (optional): Current blocker if any
 - key_decisions (optional): Array of important decisions made
