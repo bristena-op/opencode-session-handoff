@@ -29,7 +29,7 @@ When your OpenCode session gets too long, use `session_handoff` to:
 
 Creates a new session with continuation context.
 
-**Usage:** Say "handoff" or "handoff <goal>"
+**Usage:** Say "handoff" or "handoff \<goal\>"
 
 **Examples:**
 
