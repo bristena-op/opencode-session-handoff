@@ -290,6 +290,30 @@ This tool fetches the last 20 messages which uses significant tokens. The handof
   };
 }
 
+export function isHandoffTrigger(text: string): boolean {
+  const trimmed = text.trim().toLowerCase();
+  return (
+    trimmed === "handoff" ||
+    trimmed === "/handoff" ||
+    trimmed === "session handoff" ||
+    trimmed.startsWith("handoff ") ||
+    trimmed.startsWith("/handoff ")
+  );
+}
+
+export function extractGoalFromHandoff(text: string): string | null {
+  const trimmed = text.trim();
+  const lower = trimmed.toLowerCase();
+
+  if (lower.startsWith("/handoff ")) {
+    return trimmed.slice(9).trim() || null;
+  }
+  if (lower.startsWith("handoff ")) {
+    return trimmed.slice(8).trim() || null;
+  }
+  return null;
+}
+
 const HandoffPlugin: Plugin = async (ctx) => {
   const autoUpdateHook = createAutoUpdateHook({
     directory: ctx.directory,
@@ -308,6 +332,46 @@ const HandoffPlugin: Plugin = async (ctx) => {
         directory: ctx.directory,
         client: ctx.client,
       }),
+    },
+    "chat.message": async (
+      _input: {
+        sessionID: string;
+        agent?: string;
+        model?: { providerID: string; modelID: string };
+        messageID?: string;
+        variant?: string;
+      },
+      output: { message: unknown; parts: Part[] },
+    ) => {
+      const textParts = output.parts.filter(
+        (p): p is Part & { type: "text"; text: string } =>
+          p.type === "text" && typeof (p as { text?: string }).text === "string",
+      );
+
+      for (const part of textParts) {
+        if (isHandoffTrigger(part.text)) {
+          const goal = extractGoalFromHandoff(part.text);
+
+          part.text = [
+            '<system-instruction priority="critical">',
+            "The user has triggered a session handoff. You MUST invoke the `session_handoff` tool immediately.",
+            "",
+            "DO NOT interpret this as a regular task request.",
+            "DO NOT continue working on any previous tasks.",
+            "DO NOT ask clarifying questions.",
+            "",
+            "IMMEDIATELY call the session_handoff tool with:",
+            "- summary: A brief summary of what was accomplished in this session",
+            goal ? `- goal: "${goal}"` : "- goal: (not specified)",
+            "- next_steps: Any remaining tasks from the todo list",
+            "- key_decisions: Important decisions made during the session",
+            "- files_modified: Key files that were changed",
+            "</system-instruction>",
+          ].join("\n");
+
+          break;
+        }
+      }
     },
   };
 };
