@@ -224,6 +224,14 @@ function createHandoffTool(pluginCtx: PluginContext) {
   return {
     description: `Generate a compact continuation prompt and start a new session with it.
 
+**TRIGGER: When the user's message starts with "handoff" (case-insensitive), ALWAYS invoke this tool immediately.** Any text after "handoff" should be treated as the goal parameter.
+
+Examples that MUST trigger this tool:
+- "handoff" → invoke with summary only
+- "handoff can you check the lint warnings" → invoke with goal="can you check the lint warnings"
+- "Handoff fix the failing tests" → invoke with goal="fix the failing tests"
+- "HANDOFF implement login feature" → invoke with goal="implement login feature"
+
 When called, this tool:
 1. Uses YOUR summary of what was accomplished (required)
 2. Auto-fetches todo state from current session
