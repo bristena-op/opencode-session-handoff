@@ -1,7 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { spawn } from "child_process";
 import type { PluginInput } from "@opencode-ai/plugin";
 
 const PACKAGE_NAME = "opencode-session-handoff";
@@ -205,19 +204,16 @@ function invalidatePackage(): boolean {
 
 async function runBunInstall(): Promise<boolean> {
   try {
-    const proc = spawn("bun", ["install"], {
+    const proc = Bun.spawn(["bun", "install"], {
       cwd: getConfigDir(),
-      stdio: "pipe",
-    });
-
-    const exitPromise = new Promise<number | null>((resolve) => {
-      proc.on("close", (code) => resolve(code));
-      proc.on("error", () => resolve(null));
+      stdout: "pipe",
+      stderr: "pipe",
     });
 
     const timeoutPromise = new Promise<"timeout">((resolve) =>
       setTimeout(() => resolve("timeout"), BUN_INSTALL_TIMEOUT_MS),
     );
+    const exitPromise = proc.exited.then(() => "completed" as const);
 
     const result = await Promise.race([exitPromise, timeoutPromise]);
 
@@ -230,7 +226,7 @@ async function runBunInstall(): Promise<boolean> {
       return false;
     }
 
-    return result === 0;
+    return proc.exitCode === 0;
   } catch {
     return false;
   }
