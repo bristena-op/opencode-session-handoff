@@ -141,6 +141,7 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           npm version $VERSION --no-git-tag-version --allow-same-version
+          bun run format  # Format after version update
 
       - name: Create and push tag
         id: tag
