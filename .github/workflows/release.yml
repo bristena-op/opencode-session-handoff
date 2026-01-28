@@ -150,7 +150,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           # Check if tag already exists
           if git rev-parse "v$VERSION" >/dev/null 2>&1; then
             echo "Tag v$VERSION already exists, skipping tag creation"
@@ -198,18 +198,18 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           BRANCH="chore/bump-version-$VERSION"
-          
+
           # Check if branch already exists
           if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
             echo "Branch $BRANCH already exists, skipping PR creation"
             exit 0
           fi
-          
+
           git checkout -b "$BRANCH"
           git add package.json
           git commit -m "chore: bump version to $VERSION"
           git push origin "$BRANCH"
-          
+
           gh pr create \
             --title "chore: bump version to $VERSION" \
             --body "Auto-generated version bump after release v$VERSION" \
