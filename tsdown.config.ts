@@ -7,5 +7,7 @@ export default defineConfig({
   clean: true,
   outDir: "dist",
   sourcemap: true,
-  external: ["zod", "@opencode-ai/plugin"],
+  external: ["@opencode-ai/plugin"],
+  noExternal: ["zod"],
+  inlineOnly: false,
 });
