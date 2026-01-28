@@ -9,4 +9,5 @@ export default defineConfig({
   sourcemap: true,
   external: ["@opencode-ai/plugin"],
   noExternal: ["zod"],
+  inlineOnly: false,
 });
