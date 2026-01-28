@@ -1,6 +1,6 @@
 {
   "name": "opencode-session-handoff",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "OpenCode plugin for seamless session continuation when context windows fill up",
   "keywords": [
     "context-window",
@@ -49,8 +49,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "1.1.12",
-    "zod": "4.1.8"
+    "@opencode-ai/plugin": "1.1.12"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.3.1",
