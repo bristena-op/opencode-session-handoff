@@ -22,12 +22,12 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get current version
         id: current
@@ -45,7 +45,6 @@ jobs:
           # Get commits since last tag
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -z "$LAST_TAG" ]; then
-            # No tags yet, check all commits
             COMMITS=$(git log --oneline)
           else
             COMMITS=$(git log ${LAST_TAG}..HEAD --oneline)
@@ -79,11 +78,9 @@ jobs:
 
           # Check if current version already has a tag
           if git rev-parse "v$CURRENT_VERSION" >/dev/null 2>&1; then
-            # Tag exists, we need to bump
             echo "should_release=true" >> $GITHUB_OUTPUT
             echo "needs_bump=true" >> $GITHUB_OUTPUT
           else
-            # No tag for current version, release it
             echo "should_release=true" >> $GITHUB_OUTPUT
             echo "needs_bump=false" >> $GITHUB_OUTPUT
           fi
@@ -101,7 +98,6 @@ jobs:
             exit 0
           fi
 
-          # Parse semver
           IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
 
           case "$BUMP" in
@@ -123,12 +119,6 @@ jobs:
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "Bumping $CURRENT -> $NEW_VERSION ($BUMP)"
 
-      - name: Update package.json version
-        if: steps.check.outputs.should_release == 'true' && steps.check.outputs.needs_bump == 'true'
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          npm version $VERSION --no-git-tag-version
-
       - uses: oven-sh/setup-bun@v2
         if: steps.check.outputs.should_release == 'true'
         with:
@@ -146,15 +136,11 @@ jobs:
         if: steps.check.outputs.should_release == 'true'
         run: bun run build
 
-      - name: Commit version bump
-        if: steps.check.outputs.should_release == 'true' && steps.check.outputs.needs_bump == 'true'
+      - name: Update package.json for publish
+        if: steps.check.outputs.should_release == 'true'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json
-          git commit -m "chore: bump version to $VERSION [skip ci]"
-          git push
+          npm version $VERSION --no-git-tag-version --allow-same-version
 
       - name: Create and push tag
         if: steps.check.outputs.should_release == 'true'
@@ -177,6 +163,25 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Create version bump PR
+        if: steps.check.outputs.should_release == 'true' && steps.check.outputs.needs_bump == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BRANCH="chore/bump-version-$VERSION"
+          
+          git checkout -b "$BRANCH"
+          git add package.json
+          git commit -m "chore: bump version to $VERSION"
+          git push origin "$BRANCH"
+          
+          gh pr create \
+            --title "chore: bump version to $VERSION" \
+            --body "Auto-generated version bump after release v$VERSION" \
+            --base main \
+            --head "$BRANCH"
+
       - name: Generate changelog
         if: steps.check.outputs.should_release == 'true'
         id: changelog
@@ -198,6 +203,9 @@ jobs:
         run: |
           if [ "${{ steps.check.outputs.should_release }}" = "true" ]; then
             echo "✅ Released v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ steps.check.outputs.needs_bump }}" = "true" ]; then
+              echo "📝 Created PR to bump package.json version" >> $GITHUB_STEP_SUMMARY
+            fi
           else
             echo "⏭️ No release needed - no releasable commits found" >> $GITHUB_STEP_SUMMARY
             echo "Releasable prefixes: feat, fix, perf, refactor" >> $GITHUB_STEP_SUMMARY
