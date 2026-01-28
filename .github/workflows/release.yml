@@ -173,25 +173,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Create version bump PR
-        if: steps.check.outputs.should_release == 'true' && steps.check.outputs.needs_bump == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          BRANCH="chore/bump-version-$VERSION"
-          
-          git checkout -b "$BRANCH"
-          git add package.json
-          git commit -m "chore: bump version to $VERSION"
-          git push origin "$BRANCH"
-          
-          gh pr create \
-            --title "chore: bump version to $VERSION" \
-            --body "Auto-generated version bump after release v$VERSION" \
-            --base main \
-            --head "$BRANCH"
-
       - name: Generate changelog
         if: steps.check.outputs.should_release == 'true'
         id: changelog
@@ -209,12 +190,38 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           body: ${{ steps.changelog.outputs.content }}
 
+      - name: Create version bump PR
+        if: steps.check.outputs.should_release == 'true' && steps.check.outputs.needs_bump == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BRANCH="chore/bump-version-$VERSION"
+          
+          # Check if branch already exists
+          if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
+            echo "Branch $BRANCH already exists, skipping PR creation"
+            exit 0
+          fi
+          
+          git checkout -b "$BRANCH"
+          git add package.json
+          git commit -m "chore: bump version to $VERSION"
+          git push origin "$BRANCH"
+          
+          gh pr create \
+            --title "chore: bump version to $VERSION" \
+            --body "Auto-generated version bump after release v$VERSION" \
+            --base main \
+            --head "$BRANCH" || echo "PR creation failed - enable 'Allow GitHub Actions to create pull requests' in repo settings"
+
       - name: Summary
         run: |
           if [ "${{ steps.check.outputs.should_release }}" = "true" ]; then
             echo "✅ Released v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
             if [ "${{ steps.check.outputs.needs_bump }}" = "true" ]; then
-              echo "📝 Created PR to bump package.json version" >> $GITHUB_STEP_SUMMARY
+              echo "📝 Branch created for version bump PR" >> $GITHUB_STEP_SUMMARY
             fi
           else
             echo "⏭️ No release needed - no releasable commits found" >> $GITHUB_STEP_SUMMARY
