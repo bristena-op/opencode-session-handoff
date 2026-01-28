@@ -5,49 +5,19 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to release (e.g., 1.1.1)"
+      bump:
+        description: "Version bump type"
         required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
 
 jobs:
-  check-version:
-    runs-on: ubuntu-latest
-    outputs:
-      should_release: ${{ steps.check.outputs.should_release }}
-      version: ${{ steps.check.outputs.version }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Get version from package.json
-        id: pkg_version
-        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
-
-      - name: Determine version and check if release needed
-        id: check
-        run: |
-          # Use input version if provided (workflow_dispatch), otherwise use package.json
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${{ steps.pkg_version.outputs.version }}"
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-          # Check if tag already exists
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "Tag v$VERSION already exists, skipping release"
-            echo "should_release=false" >> $GITHUB_OUTPUT
-          else
-            echo "Tag v$VERSION does not exist, will create release"
-            echo "should_release=true" >> $GITHUB_OUTPUT
-          fi
-
   release:
-    needs: check-version
-    if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -57,44 +27,158 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current version
+        id: current
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Determine bump type from commits
+        id: bump
+        run: |
+          # Use manual input if provided and not 'auto'
+          if [ "${{ github.event.inputs.bump }}" != "" ] && [ "${{ github.event.inputs.bump }}" != "auto" ]; then
+            echo "type=${{ github.event.inputs.bump }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Get commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            # No tags yet, check all commits
+            COMMITS=$(git log --oneline)
+          else
+            COMMITS=$(git log ${LAST_TAG}..HEAD --oneline)
+          fi
+
+          echo "Commits since last tag:"
+          echo "$COMMITS"
+
+          # Determine bump type from conventional commits
+          if echo "$COMMITS" | grep -qE "^[a-f0-9]+ (feat|feature)(\(.+\))?!:|BREAKING CHANGE"; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          elif echo "$COMMITS" | grep -qE "^[a-f0-9]+ (feat|feature)(\(.+\))?:"; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          elif echo "$COMMITS" | grep -qE "^[a-f0-9]+ (fix|perf|refactor)(\(.+\))?:"; then
+            echo "type=patch" >> $GITHUB_OUTPUT
+          else
+            echo "type=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check if release needed
+        id: check
+        run: |
+          BUMP_TYPE="${{ steps.bump.outputs.type }}"
+          CURRENT_VERSION="${{ steps.current.outputs.version }}"
+
+          if [ "$BUMP_TYPE" = "none" ]; then
+            echo "No releasable commits found (need feat, fix, perf, or refactor)"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check if current version already has a tag
+          if git rev-parse "v$CURRENT_VERSION" >/dev/null 2>&1; then
+            # Tag exists, we need to bump
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "needs_bump=true" >> $GITHUB_OUTPUT
+          else
+            # No tag for current version, release it
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "needs_bump=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Calculate new version
+        if: steps.check.outputs.should_release == 'true'
+        id: version
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          BUMP="${{ steps.bump.outputs.type }}"
+          NEEDS_BUMP="${{ steps.check.outputs.needs_bump }}"
+
+          if [ "$NEEDS_BUMP" = "false" ]; then
+            echo "version=$CURRENT" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Parse semver
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          case "$BUMP" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Bumping $CURRENT -> $NEW_VERSION ($BUMP)"
+
+      - name: Update package.json version
+        if: steps.check.outputs.should_release == 'true' && steps.check.outputs.needs_bump == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          npm version $VERSION --no-git-tag-version
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.check.outputs.should_release == 'true'
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        if: steps.check.outputs.should_release == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Test
+        if: steps.check.outputs.should_release == 'true'
+        run: bun run test
+
+      - name: Build
+        if: steps.check.outputs.should_release == 'true'
+        run: bun run build
+
+      - name: Commit version bump
+        if: steps.check.outputs.should_release == 'true' && steps.check.outputs.needs_bump == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: bump version to $VERSION [skip ci]"
+          git push
 
       - name: Create and push tag
+        if: steps.check.outputs.should_release == 'true'
         run: |
-          VERSION="${{ needs.check-version.outputs.version }}"
+          VERSION="${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "v$VERSION" -m "Release v$VERSION"
           git push origin "v$VERSION"
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Test
-        run: bun run test
-
-      - name: Build
-        run: bun run build
-
-      - name: Update package version from tag
-        run: |
-          VERSION="${{ needs.check-version.outputs.version }}"
-          npm version $VERSION --no-git-tag-version --allow-same-version
-
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.should_release == 'true'
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish to npm
+        if: steps.check.outputs.should_release == 'true'
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Generate changelog
+        if: steps.check.outputs.should_release == 'true'
         id: changelog
         uses: orhun/git-cliff-action@v4
         with:
@@ -104,7 +188,17 @@ jobs:
           OUTPUT: CHANGELOG.md
 
       - name: Create GitHub Release
+        if: steps.check.outputs.should_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ needs.check-version.outputs.version }}
+          tag_name: v${{ steps.version.outputs.version }}
           body: ${{ steps.changelog.outputs.content }}
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.check.outputs.should_release }}" = "true" ]; then
+            echo "✅ Released v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⏭️ No release needed - no releasable commits found" >> $GITHUB_STEP_SUMMARY
+            echo "Releasable prefixes: feat, fix, perf, refactor" >> $GITHUB_STEP_SUMMARY
+          fi
